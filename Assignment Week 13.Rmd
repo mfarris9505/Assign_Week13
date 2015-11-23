@@ -1,0 +1,170 @@
+---
+title: "Assignment_13"
+author: "Matthew Farris"
+date: "November 21, 2015"
+output: html_document
+---
+# IMDB Classification- "Get Busy Living, or Get Busy Dying"
+
+```{r}
+library(plyr)
+library(stringr)
+library(rvest)
+library(tm)
+library(SnowballC)
+library(RCurl)
+```
+
+For this assignment I wanted to take a different source, specifically the IMDB page, and categorize this data. I happened to love the move Shawshank Redemption (and who doesn't its IMDB's current top movie). My goal was to categorize all of the "positive reviews" (the 9 stars or better) on the IMDB page. To do this, I had to find a test data sources. Fortunately, a quick google search produced the following: 
+
+http://www.cs.cornell.edu/people/pabo/movie-review-data/
+
+
+This site had a list of 700 positive and 700 negative reviews (based on subjective response). I pulled the polarity dataset v1.0 -I know this was an older set, but it was smaller size, and as I was having serious space issues with this project it was a necessity- and used that as my training set for the models that I employed. Unfortunately, this was one of the most time-consuming projects to date. Not because of the actually coding, but because of the run-time of some of the program. For the first time, I couldn't run this in Markdown, as every attempt resulted in a long load time (and in most cases a subsequent crashing). So, my fix was this, I used the following code to extract the data in a normal r-script, and then I saved it into a total_corpus data, this included both my test reviews from IMDB Shawshank Redemption "Loved it" section, and the training documents from the Source above. (I am sorry, this code does employ some documents on my PC, I couldn't easily get around this)
+
+##Step 1 Extracting the Data
+
+```{r, eval = FALSE}
+#Loading Testing Data
+
+#These documents were downloaded to my PC. 
+setwd("C:/Users/Matts42/Documents/IS607/MovieReviewData/tokens/neg")
+corpus_neg <-VCorpus(DirSource())
+setwd("C:/Users/Matts42/Documents/IS607/MovieReviewData/tokens/pos")
+corpus_pos <- VCorpus(DirSource())
+
+# Process to filter and Clean Data (from Chapter 10)
+corpus_neg <- tm_map(corpus_neg, removeNumbers)
+corpus_neg <- tm_map(corpus_neg, str_replace_all, pattern= "[[:punct:]]", replacement = " ")
+corpus_neg <- tm_map(corpus_neg, removeWords, words = stopwords("en"))
+corpus_neg <- tm_map(corpus_neg, tolower)
+corpus_neg <- tm_map(corpus_neg, PlainTextDocument)
+corpus_neg <- tm_map(corpus_neg, stemDocument)
+meta(corpus_neg, "Type") <- "Negative"
+
+corpus_pos <- tm_map(corpus_pos, removeNumbers)
+corpus_pos <- tm_map(corpus_pos, str_replace_all, pattern= "[[:punct:]]", replacement = " ")
+corpus_pos <- tm_map(corpus_pos, removeWords, words = stopwords("en"))
+corpus_pos <- tm_map(corpus_pos, tolower)
+corpus_pos <- tm_map(corpus_pos, PlainTextDocument)
+corpus_pos <- tm_map(corpus_pos, stemDocument)
+meta(corpus_pos, "Type") <- "Positive"
+
+
+#Using rvest package, I scraped IMDB page for Shawshank Reviews
+#The following is standalone code, and will run on any machine... HOWEVER IT TIMES OUT HALF THE TIME.
+#User discretion is advised. 
+shawshank_data <- data.frame(matrix(ncol = 1, nrow = 10000))
+x<- 0
+#On the IMDB there was 2453 I went above that number just incase, changing the number will result in extracting less data. 
+for (i in 1:250){
+  
+  shawshank_url <- "http://www.imdb.com/title/tt0111161/reviews?filter=love;filter=love;start="
+  url_num <- i * 10
+  Shaw_num <- toString(url_num)
+  shaw_url <- paste0(shawshank_url,Shaw_num)
+  
+  shaw_data <- shaw_url %>% 
+    read_html() %>% 
+    html_nodes(xpath ='//*[(@id = "tn15content")]//p') %>% 
+    html_text()
+    #Looping the data to get the charcter data into a single data frame. 
+    for(l in 1:length(shaw_data)){
+    x <-x+1
+    shawshank_data[x,1] <- shaw_data[l]
+    }
+}
+
+shawshank_data <- na.omit(shawshank_data)
+
+names(shawshank_data) <-c("Review")
+
+#Some rows need to be removed and cleaned. 
+shaw_clean <- shawshank_data[- grep("This review may contain spoilers", shawshank_data$Review),]
+shaw_clean <-data.frame(shaw_clean)
+shaw_clean <- shaw_clean[- grep("Add another review", shawshank_data$Review),]
+shaw_clean <-data.frame(shaw_clean)
+shaw_clean <- data.frame(shaw_clean)
+shawshank_corpus <- VCorpus(DataframeSource(shaw_clean))
+
+#Applying same cleaning to this as the test data
+shawshank_corpus <- tm_map(shawshank_corpus, removeNumbers)
+shawshank_corpus <- tm_map(shawshank_corpus, str_replace_all, pattern= "[[:punct:]]", replacement = " ")
+shawshank_corpus <- tm_map(shawshank_corpus, removeWords, words = stopwords("en"))
+shawshank_corpus <- tm_map(shawshank_corpus, tolower)
+shawshank_corpus <- tm_map(shawshank_corpus, PlainTextDocument)
+shawshank_corpus <- tm_map(shawshank_corpus, stemDocument)
+
+meta(shawshank_corpus, "Type") <- "Positive"
+
+#Combining Corpus 
+total_corpus <- c(corpus_neg,corpus_pos,shawshank_corpus)
+
+#Writing to Text 
+writeLines(as.character(total_corpus), con="mycorpus.txt")
+```
+
+So, yes, that was alot of code... That you can't really run... I apologize. Honestly, the Corpus I created on my PC was 18MB, running R code on top of it just killed my PC. In brief, I will explain the data created. From the test data site, they had 692 Negative reviews, and 694 positive reviews. This total (1386) was used as the "training" set for the Models employed below. I was able to extract a total of 2484 reviews from the IMDB page. This, is the primary reason that I could not run this code in markdown. The code above works, but it does take about 5 mintues to run. My primary reason for doing this, is that I am truly interested in webscraping. As of yet, we have always kept it to a small dataset, I felt it was time to test my skills and to test the extent of my computer. I found my computer lacking, but capable. I did save all of the data I pulled into a single Total_Corpus file (which I can't for the life of me figure out how to load from github, as I had to save it as a .txt). 
+
+## Step Two: Analysis
+```{r, eval = FALSE}
+
+#Creating Container Again, this was run on my PC. 
+dtm <-DocumentTermMatrix(total_corpus)
+dtm <- removeSparseTerms(dtm, 1-(10/length(total_corpus)))
+type_labels <-unlist(meta(total_corpus,"Type")[,1])
+N<- length(type_labels)
+
+container <- create_container(dtm, labels = type_labels,trainSize = 1:1386, testSize = 1387:N, virgin = FALSE)
+
+#Creating Model
+svm_model <-train_model(container, "SVM")
+tree_model <-train_model(container, "TREE")
+maxent_model <-train_model(container, "MAXENT")
+
+#Model Output
+svm_out <- classify_model(container, svm_model)
+tree_out <- classify_model(container, tree_model)
+maxent_out <- classify_model(container, maxent_model)
+
+#One Dataframe
+total_out <- data.frame(correct_type = type_labels[1387:N],
+                        svm = as.character(svm_out[,1]),
+                        tree = as.character(tree_out[,1]),
+                        maxent = as.character(maxent_out[,1]),
+                        stringsAsFactors = FALSE)
+
+write.table(total_out, file= "output.txt")
+```                               
+
+Again, this was run on my PC, in my own dataset. I will explain in brief what I did here (though this is basically just a repeat of the Chapter 10). After combining the 3 corpus that I created (Negative training Corpus, Positive Training Corpus, and the Shawshank Corpus), I took the positive and negative, or the "known" reviews and compared them to the "unknown" Shawshank. (I actually knew the outcome of these reviews, as I specifically choose the Loved It Reviews)
+## Step Three: Results
+
+```{r}
+url_output<- getURL("https://raw.githubusercontent.com/mfarris9505/Assign_Week13/master/output.txt")
+
+total_output <- read.table(text = url_output)
+total_output <-data.frame(correct_type = as.character(total_output$correct_type),
+                        svm = as.character(total_output$svm),
+                        tree = as.character(total_output$tree),
+                        maxent = as.character(total_output$maxent), stringsAsFactors = FALSE)
+```
+
+The results of each individual Model are as follows: 
+
+SVM
+```{r}
+table(total_output[,1] == total_output[,2])
+```
+Tree
+```{r}
+table(total_output[,1] == total_output[,3])
+```
+Maxent
+```{r}
+table(total_output[,1] == total_output[,4])
+```
+
+From the results we can see that the SVM model was only 61% accurate. The Tree model was much higher correctly predicting 92% of the positive reviews. The Maxent also was fairly accurate with roughly 83% accuracy. 
+
+All of these models indicate that the dataset employed is a decent set to use as a standard for comparing movie reviews.  
